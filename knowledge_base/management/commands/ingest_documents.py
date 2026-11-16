@@ -1,10 +1,9 @@
 from pathlib import Path
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from knowledge_base.models import DocumentChunk
-from knowledge_base.services.ingestion import ingest_file
+from knowledge_base.services.ingestion import discover_pdfs, ingest_file
 
 
 class Command(BaseCommand):
@@ -12,21 +11,21 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--file", help="Path to a PDF inside data/")
+        parser.add_argument("--force", action="store_true", help="Re-extract and re-embed even unchanged documents")
 
     def handle(self, *args, **options):
-        data_dir = Path(settings.DATA_DIR).resolve()
         if options["file"]:
             path = Path(options["file"])
             if not path.is_absolute():
                 path = Path.cwd() / path
             paths = [path]
         else:
-            paths = sorted(p for p in data_dir.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf")
+            paths = discover_pdfs()
         self.stdout.write(f"Found {len(paths)} PDF files.")
         counts = {"processed": 0, "skipped": 0, "failed": 0}
         for path in paths:
             try:
-                outcome, document, sparse = ingest_file(path)
+                outcome, document, sparse = ingest_file(path, force=options["force"])
                 counts[outcome] += 1
                 self.stdout.write(f"{outcome}: {document.title} ({path.name})")
                 if sparse:

@@ -12,7 +12,12 @@ from .embeddings import embed_text
 from .pdf_extractor import extract_pdf
 
 
-def ingest_file(path: Path) -> tuple[str, Document, list[int]]:
+def discover_pdfs() -> list[Path]:
+    data_dir = Path(settings.DATA_DIR).resolve()
+    return sorted(p for p in data_dir.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf")
+
+
+def ingest_file(path: Path, *, force: bool = False) -> tuple[str, Document, list[int]]:
     data_dir = Path(settings.DATA_DIR).resolve()
     path = Path(path).resolve()
     if path.suffix.lower() != ".pdf" or not path.is_file() or not path.is_relative_to(data_dir):
@@ -20,7 +25,7 @@ def ingest_file(path: Path) -> tuple[str, Document, list[int]]:
     relative = path.relative_to(data_dir).as_posix()
     checksum = hashlib.sha256(path.read_bytes()).hexdigest()
     previous = Document.objects.filter(relative_path=relative).first()
-    if previous and previous.status == Document.Status.COMPLETED and previous.checksum == checksum:
+    if not force and previous and previous.status == Document.Status.COMPLETED and previous.checksum == checksum:
         return "skipped", previous, []
     if previous is None:
         Document.objects.create(relative_path=relative, filename=path.name, title=path.stem,

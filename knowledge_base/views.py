@@ -1,9 +1,42 @@
 import json
+import logging
 
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.views.decorators.http import require_POST
+from django.shortcuts import render
+from django.views.decorators.http import require_http_methods, require_POST
 
+from .services.answering import answer_question
 from .services.retrieval import retrieve_passages
+
+
+logger = logging.getLogger(__name__)
+MAX_QUESTION_LENGTH = 1000
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def ask(request):
+    context = {"question": "", "result": None, "error": None, "max_length": MAX_QUESTION_LENGTH}
+    status = 200
+    if request.method == "POST":
+        # Browsers submit textarea line breaks as \r\n, which would otherwise count double toward the limit.
+        question = " ".join(request.POST.get("question", "").split())
+        context["question"] = question
+        if not question:
+            context["error"] = "Please type a question."
+            status = 400
+        elif len(question) > MAX_QUESTION_LENGTH:
+            context["error"] = f"Please keep your question to {MAX_QUESTION_LENGTH:,} characters or fewer."
+            status = 400
+        else:
+            try:
+                context["result"] = answer_question(question)
+            except Exception:
+                logger.exception("Answering a question failed")
+                context["error"] = "Sorry, answers are unavailable right now. Please try again in a few minutes."
+                status = 503
+    return render(request, "knowledge_base/ask.html", context, status=status)
 
 
 @require_POST

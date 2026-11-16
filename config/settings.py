@@ -55,3 +55,7 @@ DATA_DIR = BASE_DIR / "data"
 RAG_CHUNK_TOKENS = 400
 RAG_CHUNK_OVERLAP = 50
 RAG_MIN_SIMILARITY = float(os.environ.get("RAG_MIN_SIMILARITY", "0.70"))
+GEMINI_CHAT_MODEL = os.environ.get("GEMINI_CHAT_MODEL", "gemini-3.5-flash-lite")
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "ask"
+LOGOUT_REDIRECT_URL = "login"

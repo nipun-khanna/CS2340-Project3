@@ -1,0 +1,54 @@
+{% extends "knowledge_base/base.html" %}
+
+{% block content %}
+<header>
+  <h1>Ask a health question</h1>
+  <form method="post" action="{% url 'logout' %}">
+    {% csrf_token %}
+    <span class="meta">Signed in as {{ user.get_username }}</span>
+    <button type="submit" class="link-button">Sign out</button>
+  </form>
+</header>
+
+<p class="notice">This gives general health information from trusted public sources. It is not medical advice. <strong>In an emergency, call 911.</strong></p>
+
+<form method="post">
+  {% csrf_token %}
+  <label for="question">Your question</label>
+  <textarea id="question" name="question" rows="3" maxlength="{{ max_length }}" required placeholder="For example: How can I prevent falls at home?">{{ question }}</textarea>
+  <button type="submit">Ask</button>
+</form>
+
+{% if error %}
+  <p class="error" role="alert">{{ error }}</p>
+{% endif %}
+
+{% if result %}
+  <section aria-live="polite">
+    <h2>Answer</h2>
+    <div class="answer">{{ result.answer|linebreaksbr }}</div>
+
+    {% if result.sources %}
+      <h2>Sources</h2>
+      <p class="meta">The numbers in the answer, like [1], point to these sources.</p>
+      <ol class="sources">
+        {% for source in result.sources %}
+          <li>
+            <strong>[{{ source.number }}]
+              {% if source.source_url %}<a href="{{ source.source_url }}" target="_blank" rel="noopener noreferrer">{{ source.title }}</a>{% else %}{{ source.title }}{% endif %}
+            </strong>
+            <div class="meta">
+              {% if source.publisher %}{{ source.publisher }} · {% endif %}
+              {% if source.page_start == source.page_end %}Page {{ source.page_start }}{% else %}Pages {{ source.page_start }}–{{ source.page_end }}{% endif %}
+            </div>
+            <details>
+              <summary>Show the passage this came from</summary>
+              <blockquote>{{ source.text }}</blockquote>
+            </details>
+          </li>
+        {% endfor %}
+      </ol>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}
