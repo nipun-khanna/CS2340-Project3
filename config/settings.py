@@ -59,3 +59,9 @@ GEMINI_CHAT_MODEL = os.environ.get("GEMINI_CHAT_MODEL", "gemini-3.5-flash-lite")
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "ask"
 LOGOUT_REDIRECT_URL = "login"
+
+# Exact hosts only. Extend after reviewing a source; redirects must also stay on this list.
+INGEST_ALLOWED_HOSTS = (
+    "medlineplus.gov", "www.nia.nih.gov", "www.cdc.gov", "www.fda.gov",
+    "www.niddk.nih.gov", "www.who.int",
+)

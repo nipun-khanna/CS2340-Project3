@@ -2,9 +2,26 @@
 {% block title %}Developer tools · Health Questions{% endblock %}
 {% block content %}
 <header><h1>Developer tools</h1><a href="{% url 'ask' %}">Back to questions</a></header>
-<p>Compare chatbot answers with known questions. These tools are available to staff only.</p>
+<p>Build the knowledge base and compare chatbot answers with known questions. These tools are available to staff only.</p>
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 {% if message %}<p class="answer" role="status">{{ message }}</p>{% endif %}
+<h2>Ingest a PDF</h2>
+<p class="meta">Reads a curated file already in the project's data folder.</p>
+<form method="post">
+  {% csrf_token %}<input type="hidden" name="action" value="pdf">
+  <label for="pdf">Dataset PDF</label>
+  <select id="pdf" name="pdf" required>{% for file in files %}<option value="{{ file }}">{{ file }}</option>{% endfor %}</select>
+  <button type="submit">Ingest PDF</button>
+</form>
+<h2>Ingest a webpage</h2>
+<p class="meta">Scrapes readable HTML from a trusted public health article. Unchanged content is skipped. Each ingestion may take a few moments.</p>
+<details><summary>Supported websites</summary><ul>{% for host in allowed_hosts %}<li>{{ host }}</li>{% endfor %}</ul></details>
+<form method="post">
+  {% csrf_token %}<input type="hidden" name="action" value="web">
+  <label for="url">Article URL</label>
+  <input id="url" name="url" type="url" maxlength="200" required placeholder="https://medlineplus.gov/dehydration.html">
+  <button type="submit">Ingest webpage</button>
+</form>
 <h2>Test a known question</h2>
 <p class="meta">Runs the real chatbot and checks expected facts, cited sources, and unrelated-question handling. A PASS is an automated smoke check; review the answer for accuracy, including negation and unsupported claims.</p>
 <form method="post">
@@ -27,4 +44,6 @@
   <p class="meta">Time: {{ evaluation.elapsed_seconds }} seconds</p>
 </section>
 {% endif %}
+<h2>Knowledge base</h2>
+<ul class="sources">{% for document in documents %}<li><strong>{{ document.title }}</strong><br><span class="meta">{{ document.status }} · {{ document.chunk_count }} chunks</span>{% if document.source_url %}<br><a href="{{ document.source_url }}" target="_blank" rel="noopener noreferrer">Original source</a>{% endif %}</li>{% empty %}<li>No documents yet. Ingest a source above to get started.</li>{% endfor %}</ul>
 {% endblock %}
