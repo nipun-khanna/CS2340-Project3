@@ -7,20 +7,12 @@ from google import genai
 from google.genai import errors, types
 from pydantic import BaseModel
 
+from .prompts import search_query, select_prompt
 from .retrieval import retrieve_passages
 
 
 NOT_FOUND = ("I couldn't find an answer to that in the available health documents. "
              "Please ask a doctor, nurse, or pharmacist.")
-
-SYSTEM_INSTRUCTION = """You answer health questions from older adults using ONLY the numbered passages you are given.
-Rules:
-- Use only facts stated in the passages. Never add outside medical knowledge.
-- Cite the passage after each sentence that uses it, like [1] or [2][3].
-- Write in plain, friendly language a non-expert can follow. Keep the answer under 200 words.
-- Do not diagnose, and do not tell anyone to start, stop, or change a medicine or dose. Where it fits, suggest talking to a doctor, nurse, or pharmacist.
-- If the question describes a possible emergency (such as chest pain, trouble breathing, a serious fall, or signs of a stroke), first tell the person to call 911. This is the one statement you may make without a citation.
-- If the passages do not answer the question, set answerable to false and leave answer empty and cited_passages empty."""
 
 _MARKER = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
 
@@ -32,13 +24,15 @@ class ModelAnswer(BaseModel):
 
 
 def answer_question(question: str, *, client=None) -> dict:
-    retrieved = retrieve_passages(question, 5)
-    result = {"question": retrieved["question"], "answered": False, "answer": NOT_FOUND, "sources": []}
+    normalized = " ".join(question.split())
+    strategy, system_instruction = select_prompt(normalized)
+    retrieved = retrieve_passages(search_query(question, strategy.intent), 5)
+    result = {"question": normalized, "intent": strategy.intent, "answered": False, "answer": NOT_FOUND, "sources": []}
     passages = retrieved["results"]
     if not passages:
         return result
 
-    reply = _generate(" ".join(question.split()), passages, client)
+    reply = _generate(normalized, passages, client, system_instruction, strategy.temperature)
     if not reply.answerable or not reply.answer.strip():
         return result
 
@@ -59,7 +53,7 @@ def answer_question(question: str, *, client=None) -> dict:
     return result
 
 
-def _generate(question: str, passages: list[dict], client) -> ModelAnswer:
+def _generate(question: str, passages: list[dict], client, system_instruction: str, temperature: float) -> ModelAnswer:
     if client is None:
         key = os.environ.get("GEMINI_API_KEY")
         if not key:
@@ -70,7 +64,7 @@ def _generate(question: str, passages: list[dict], client) -> ModelAnswer:
     )
     contents = f"Passages:\n\n{numbered}\n\nQuestion:\n{question}"
     config = types.GenerateContentConfig(
-        system_instruction=SYSTEM_INSTRUCTION, temperature=0.2,
+        system_instruction=system_instruction, temperature=temperature,
         response_mime_type="application/json", response_schema=ModelAnswer,
     )
     for attempt in range(3):

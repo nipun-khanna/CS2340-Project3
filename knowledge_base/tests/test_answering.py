@@ -36,7 +36,7 @@ class AnswerQuestionTests(SimpleTestCase):
         retrieve.return_value = retrieved()
         client = client_returning()
         result = answer_question("How do I stay hydrated?", client=client)
-        self.assertEqual(result, {"question": "How do I stay hydrated?", "answered": False, "answer": NOT_FOUND, "sources": []})
+        self.assertEqual(result, {"question": "How do I stay hydrated?", "intent": "procedural", "answered": False, "answer": NOT_FOUND, "sources": []})
         client.models.generate_content.assert_not_called()
 
     def test_sources_are_the_cited_passages_with_metadata(self, retrieve):
@@ -88,6 +88,26 @@ class AnswerQuestionTests(SimpleTestCase):
         answer_question("q", client=client)
         self.assertIn("Doc 1, web article", client.models.generate_content.call_args.kwargs["contents"])
 
+    def test_prompt_and_temperature_follow_question_intent(self, retrieve):
+        retrieve.return_value = retrieved(passage(1))
+        cases = [
+            ("How much water should I drink each day?", "factual", "Answer directly in the first sentence", 0.1),
+            ("Why do older adults get dehydrated?", "explanation", "Explain causes and effects", 0.2),
+            ("What are some tips to sleep better?", "procedural", "numbered list", 0.2),
+            ("Write a short poem about staying hydrated", "creative", "creative format", 0.7),
+        ]
+        for question, intent, rule, temperature in cases:
+            with self.subTest(question=question):
+                client = client_returning(ModelAnswer(answerable=True, answer="Yes [1].", cited_passages=[1]))
+                result = answer_question(question, client=client)
+                config = client.models.generate_content.call_args.kwargs["config"]
+                self.assertEqual(result["intent"], intent)
+                self.assertIn(f"Question type: {intent}.", config.system_instruction)
+                self.assertIn(rule, config.system_instruction)
+                self.assertIn("ONLY the numbered passages", config.system_instruction)
+                self.assertEqual(config.temperature, temperature)
+        retrieve.assert_called_with("staying hydrated", 5)
+
     def test_falls_back_to_parsing_response_text(self, retrieve):
         retrieve.return_value = retrieved(passage(1))
         text = json.dumps({"answerable": True, "answer": "Yes [1].", "cited_passages": [1]})
@@ -134,18 +154,19 @@ class AskViewTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
         self.user = User(username="resident")
+        usage_log = patch("knowledge_base.views.UsageLog.objects.create")
+        self.log_usage = usage_log.start()
+        self.addCleanup(usage_log.stop)
 
     def post(self, question):
         request = self.factory.post("/", {"question": question})
         request.user = self.user
         return ask(request)
 
-    def test_requires_login(self):
+    def test_open_to_visitors_without_login(self):
         request = self.factory.get("/")
         request.user = AnonymousUser()
-        response = ask(request)
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "/accounts/login/?next=/")
+        self.assertContains(ask(request), 'name="question"')
 
     def test_get_shows_form_and_emergency_notice(self):
         request = self.factory.get("/")
@@ -196,3 +217,4 @@ class AskViewTests(SimpleTestCase):
             response = self.post("How do I stay hydrated?")
         self.assertContains(response, "answers are unavailable right now", status_code=503)
         self.assertNotContains(response, "secret detail", status_code=503)
+        self.assertFalse(self.log_usage.call_args.kwargs["success"])
