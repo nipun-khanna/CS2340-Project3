@@ -129,9 +129,9 @@ The first test command uses in-memory PDFs and mocked embedding responses, so it
 
 ## Deploying to Vercel
 
-The repository is ready for Vercel: `api/index.py` exposes the Django WSGI app, `vercel.json` routes every path to it (60-second limit, enough for a knowledge base reload) and bundles `data/` and `evaluation_answers.json`, and WhiteNoise serves admin and app static files without a build step.
+The repository is ready for Vercel, which detects Django from `manage.py` and serves `config.wsgi` directly. WhiteNoise serves admin and app static files. New Vercel projects allow functions to run for up to 300 seconds, enough for a knowledge base reload (about 40 seconds).
 
-1. In Vercel, choose **Add New → Project**, import this GitHub repository, and keep the framework preset as **Other** with no build command.
+1. In Vercel, choose **Add New → Project** and import this GitHub repository (the framework is detected as Django), or deploy from a local checkout with `npx vercel deploy --prod`. A private repository owned by another personal GitHub account cannot be imported on the Hobby plan; use the CLI instead.
 2. Under **Settings → Environment Variables**, add:
    - `DJANGO_SECRET_KEY`: a new long random value (required; the app refuses to start on Vercel without it).
    - `DJANGO_DEBUG`: `False`.
