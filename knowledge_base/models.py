@@ -42,3 +42,14 @@ class DocumentChunk(models.Model):
             models.CheckConstraint(condition=models.Q(page_start__gte=1), name="chunk_page_start_positive"),
             models.CheckConstraint(condition=models.Q(page_end__gte=models.F("page_start")), name="chunk_page_order"),
         ]
+
+
+class UsageLog(models.Model):
+    # Metadata only: question text is not stored, since it may contain private health details.
+    created_at = models.DateTimeField(auto_now_add=True)
+    question_length = models.PositiveIntegerField()
+    success = models.BooleanField()
+    response_seconds = models.FloatField()
+
+    class Meta:
+        ordering = ["-created_at"]

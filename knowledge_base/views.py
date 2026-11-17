@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -8,6 +9,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from .services.answering import answer_question
 from .services.evaluation import evaluate_case, load_cases
+from .models import UsageLog
 from .services.retrieval import retrieve_passages
 
 
@@ -30,12 +32,16 @@ def ask(request):
             context["error"] = f"Please keep your question to {MAX_QUESTION_LENGTH:,} characters or fewer."
             status = 400
         else:
+            start = time.time()
+            success = True
             try:
                 context["result"] = answer_question(question)
             except Exception:
                 logger.exception("Answering a question failed")
                 context["error"] = "Sorry, answers are unavailable right now. Please try again in a few minutes."
                 status = 503
+                success = False
+            UsageLog.objects.create(question_length=len(question), success=success, response_seconds=time.time() - start)
     return render(request, "knowledge_base/ask.html", context, status=status)
 
 
