@@ -3,11 +3,13 @@
 {% block content %}
 <header>
   <h1>Ask a health question</h1>
+  {% if user.is_authenticated %}
   <form method="post" action="{% url 'logout' %}">
     {% csrf_token %}
     <span class="meta">Signed in as {{ user.get_username }}</span>
     <button type="submit" class="link-button">Sign out</button>
   </form>
+  {% endif %}
 </header>
 
 {% if user.is_staff %}<p><a href="{% url 'developer_tools' %}">Developer tools</a></p>{% endif %}

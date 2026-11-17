@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 MAX_QUESTION_LENGTH = 1000
 
 
-@login_required
 @require_http_methods(["GET", "POST"])
 def ask(request):
     context = {"question": "", "result": None, "error": None, "max_length": MAX_QUESTION_LENGTH}
