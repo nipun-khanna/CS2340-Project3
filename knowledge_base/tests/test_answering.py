@@ -166,7 +166,9 @@ class AskViewTests(SimpleTestCase):
     def test_open_to_visitors_without_login(self):
         request = self.factory.get("/")
         request.user = AnonymousUser()
-        self.assertContains(ask(request), 'name="question"')
+        response = ask(request)
+        self.assertContains(response, 'name="question"')
+        self.assertContains(response, 'href="/accounts/login/?next=/developer/"')
 
     def test_get_shows_form_and_emergency_notice(self):
         request = self.factory.get("/")

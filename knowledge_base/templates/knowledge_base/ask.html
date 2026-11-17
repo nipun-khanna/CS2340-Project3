@@ -9,6 +9,8 @@
     <span class="meta">Signed in as {{ user.get_username }}</span>
     <button type="submit" class="link-button">Sign out</button>
   </form>
+  {% else %}
+  <a href="{% url 'login' %}?next={% url 'developer_tools' %}" class="meta">Staff sign in</a>
   {% endif %}
 </header>
 
