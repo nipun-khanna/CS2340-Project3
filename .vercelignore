@@ -7,3 +7,15 @@ venv
 .idea
 .vscode
 docs
+.vercel
+.git
+.bash_profile
+.bashrc
+.zprofile
+.zshrc
+.profile
+.gitconfig
+.ripgreprc
+.mcp.json
+.github
+scripts

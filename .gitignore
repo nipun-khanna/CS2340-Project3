@@ -224,3 +224,4 @@ __marimo__/
 # Local browser checks and generated evaluation reports
 /.playwright-mcp/
 /evaluation-results*.json
+.vercel
