@@ -151,3 +151,25 @@ class DeveloperViewTests(SimpleTestCase):
         self.assertContains(self.request({"action": "evaluate", "case_id": load_cases()[0]["id"]}), "&lt;script&gt;")
         evaluate.assert_called_once_with(load_cases()[0])
         self.assertEqual(self.request({"action": "evaluate", "case_id": "unknown"}).status_code, 400)
+
+    @patch("knowledge_base.models.Document.objects.order_by", return_value=[])
+    @patch("knowledge_base.views.call_command")
+    def test_clear_and_reload_require_confirmation_and_run_commands(self, command, documents):
+        self.assertContains(self.request(), "Reload knowledge base")
+        self.assertContains(self.request({"action": "clear"}), "Tick the confirmation box", status_code=400)
+        command.assert_not_called()
+
+        command.side_effect = lambda name, **kw: kw["stdout"].write("Removed 12 documents and 300 chunks.\n")
+        self.assertContains(self.request({"action": "clear", "confirm": "yes"}), "Removed 12 documents and 300 chunks.")
+        self.assertEqual(command.call_args.args, ("clear_knowledge_base",))
+        self.assertTrue(command.call_args.kwargs["yes"])
+
+        command.side_effect = lambda name, **kw: kw["stdout"].write(
+            "Found 12 PDF files.\nprocessed: Doc\nProcessed: 12\nSkipped unchanged: 0\nFailed: 0\nTotal searchable chunks: 300\n")
+        response = self.request({"action": "reload", "confirm": "yes"})
+        self.assertContains(response, "Processed: 12 Skipped unchanged: 0 Failed: 0 Total searchable chunks: 300")
+        self.assertEqual(command.call_args.args, ("reload_knowledge_base",))
+
+        command.side_effect = CommandError("1 document(s) failed")
+        with self.assertLogs("knowledge_base.views", "ERROR"):
+            self.assertEqual(self.request({"action": "reload", "confirm": "yes"}).status_code, 503)

@@ -1,10 +1,13 @@
 import json
 import logging
 import time
+from io import StringIO
 from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_http_methods, require_POST
@@ -13,6 +16,7 @@ from .models import Document, UsageLog
 from .services.answering import answer_question
 from .services.evaluation import evaluate_case, load_cases
 from .services.ingestion import discover_pdfs, ingest_file
+from .services.monitoring import WINDOWS_HOURS, performance_report
 from .services.retrieval import retrieve_passages
 from .services.web_ingestion import ingest_url
 
@@ -68,6 +72,21 @@ def retrieve(request):
 
 
 @login_required
+@require_http_methods(["GET"])
+def monitoring(request):
+    if not request.user.is_staff:
+        return JsonResponse({"error": "Developer login required"}, status=403)
+    try:
+        hours = int(request.GET.get("hours", 24))
+    except ValueError:
+        hours = 24
+    if hours not in WINDOWS_HOURS:
+        hours = 24
+    context = {"windows": WINDOWS_HOURS.items(), "report": performance_report(hours)}
+    return render(request, "knowledge_base/monitoring.html", context)
+
+
+@login_required
 @require_http_methods(["GET", "POST"])
 def developer_tools(request):
     # Staff membership is managed by the existing Django administrator.
@@ -97,6 +116,17 @@ def developer_tools(request):
                 context["message"] = f"{outcome.capitalize()}: {document.title} ({document.chunk_count} chunks)."
                 if sparse:
                     context["message"] += f" Review sparse pages: {sparse}."
+            elif action in ("clear", "reload"):
+                if request.POST.get("confirm") != "yes":
+                    raise ValueError(f"Tick the confirmation box to {action} the knowledge base.")
+                output = StringIO()
+                command = "clear_knowledge_base" if action == "clear" else "reload_knowledge_base"
+                try:
+                    call_command(command, yes=True, stdout=output, stderr=output)
+                except CommandError as exc:
+                    raise RuntimeError(output.getvalue()) from exc
+                # Reload ends with a four-line summary of processed, skipped, failed, and searchable chunks.
+                context["message"] = " ".join(output.getvalue().strip().splitlines()[-4 if action == "reload" else -1:])
             else:
                 raise ValueError("Choose a supported action.")
         except ValueError as exc:

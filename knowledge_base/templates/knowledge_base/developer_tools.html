@@ -2,7 +2,7 @@
 {% block title %}Developer tools · Health Questions{% endblock %}
 {% block content %}
 <header><h1>Developer tools</h1><a href="{% url 'ask' %}">Back to questions</a></header>
-<p>Build the knowledge base and compare chatbot answers with known questions. These tools are available to staff only.</p>
+<p>Build the knowledge base and compare chatbot answers with known questions. These tools are available to staff only. <a href="{% url 'monitoring' %}">View system performance</a></p>
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 {% if message %}<p class="answer" role="status">{{ message }}</p>{% endif %}
 <h2>Ingest a PDF</h2>
@@ -45,5 +45,12 @@
 </section>
 {% endif %}
 <h2>Knowledge base</h2>
+<p class="meta"><strong>Reload</strong> re-extracts and re-embeds every PDF in the data folder and removes documents whose PDF is gone; web articles are kept. It can take several minutes. <strong>Clear</strong> removes every document, including web articles; the PDF files are not deleted.</p>
+<form method="post">
+  {% csrf_token %}
+  <label><input type="checkbox" name="confirm" value="yes" required> I understand this changes what the chatbot can answer from</label>
+  <button type="submit" name="action" value="reload">Reload knowledge base</button>
+  <button type="submit" name="action" value="clear">Clear knowledge base</button>
+</form>
 <ul class="sources">{% for document in documents %}<li><strong>{{ document.title }}</strong><br><span class="meta">{{ document.status }} · {{ document.chunk_count }} chunks</span>{% if document.source_url %}<br><a href="{{ document.source_url }}" target="_blank" rel="noopener noreferrer">Original source</a>{% endif %}</li>{% empty %}<li>No documents yet. Ingest a source above to get started.</li>{% endfor %}</ul>
 {% endblock %}

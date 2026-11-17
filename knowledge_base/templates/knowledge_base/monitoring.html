@@ -1,0 +1,36 @@
+{% extends "knowledge_base/base.html" %}
+{% block title %}System performance · Health Questions{% endblock %}
+{% block content %}
+<header><h1>System performance and usage</h1><a href="{% url 'developer_tools' %}">Back to developer tools</a></header>
+<p>Response time and failures for questions asked on the main page. Target: 95% of answers within {{ report.target_seconds|floatformat:"-2" }} seconds and no more than {% widthratio report.max_failure_rate 1 100 %}% failures.</p>
+<nav aria-label="Time window">{% for hours, label in windows %}{% if hours == report.hours %}<strong>{{ label }}</strong>{% else %}<a href="?hours={{ hours }}">{{ label }}</a>{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</nav>
+{% with s=report.summary %}
+<h2>{{ report.window }}: {{ s.status }}</h2>
+{% if s.requests %}
+  {% if s.problems %}<ul class="error" role="alert">{% for problem in s.problems %}<li>{{ problem|capfirst }}</li>{% endfor %}</ul>{% endif %}
+  <table>
+    <tr><th scope="row">Requests</th><td>{{ s.requests }}</td></tr>
+    <tr><th scope="row">Failures</th><td>{{ s.failures }} ({% widthratio s.failure_rate 1 100 %}%)</td></tr>
+    <tr><th scope="row">Average response time</th><td>{{ s.average_seconds|floatformat:2 }} s</td></tr>
+    <tr><th scope="row">Median (p50)</th><td>{{ s.p50_seconds|floatformat:2 }} s</td></tr>
+    <tr><th scope="row">95th percentile (p95)</th><td>{{ s.p95_seconds|floatformat:2 }} s</td></tr>
+    <tr><th scope="row">Slowest</th><td>{{ s.max_seconds|floatformat:2 }} s</td></tr>
+    <tr><th scope="row">Slower than target</th><td>{{ s.slow_requests }}</td></tr>
+  </table>
+{% else %}
+  <p>No questions were asked in this window.</p>
+{% endif %}
+{% endwith %}
+{% if report.recent_logs %}
+<h2>Usage log</h2>
+<p class="meta">Most recent {{ report.recent_logs|length }} questions in this window. Question text is not stored.</p>
+<table>
+  <tr><th scope="col">Time</th><th scope="col">Question length</th><th scope="col">Result</th><th scope="col">Response time</th></tr>
+  {% for log in report.recent_logs %}<tr><td>{{ log.created_at }}</td><td>{{ log.question_length }} characters</td><td>{% if log.success %}Answered{% else %}Failed{% endif %}</td><td>{{ log.response_seconds|floatformat:2 }} s</td></tr>{% endfor %}
+</table>
+{% endif %}
+{% if report.recent_failures %}
+<h2>Recent failures</h2>
+<ul>{% for log in report.recent_failures %}<li>{{ log.created_at }} after {{ log.response_seconds|floatformat:2 }} s</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}
