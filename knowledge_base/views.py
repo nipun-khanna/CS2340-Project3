@@ -7,6 +7,7 @@ from django.shortcuts import render
 from django.views.decorators.http import require_http_methods, require_POST
 
 from .services.answering import answer_question
+from .services.evaluation import evaluate_case, load_cases
 from .services.retrieval import retrieve_passages
 
 
@@ -55,3 +56,32 @@ def retrieve(request):
     except Exception:
         return JsonResponse({"error": "Retrieval is temporarily unavailable"}, status=503)
     return JsonResponse(response)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def developer_tools(request):
+    # Staff membership is managed by the existing Django administrator.
+    if not request.user.is_staff:
+        return JsonResponse({"error": "Developer login required"}, status=403)
+    cases = load_cases()
+    context = {"cases": cases}
+    status = 200
+    if request.method == "POST":
+        action = request.POST.get("action")
+        try:
+            if action == "evaluate":
+                case = next((case for case in cases if case["id"] == request.POST.get("case_id")), None)
+                if case is None:
+                    raise ValueError("Choose one of the known questions.")
+                context["evaluation"] = evaluate_case(case)
+            else:
+                raise ValueError("Choose a supported action.")
+        except ValueError as exc:
+            context["error"] = str(exc)
+            status = 400
+        except Exception:
+            logger.exception("Developer tool failed")
+            context["error"] = "The operation failed. Check the database, API configuration, and source availability."
+            status = 503
+    return render(request, "knowledge_base/developer_tools.html", context, status=status)
