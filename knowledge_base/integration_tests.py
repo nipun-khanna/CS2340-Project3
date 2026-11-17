@@ -188,3 +188,53 @@ class AskPageTests(TestCase):
         with patch("knowledge_base.views.answer_question") as answer:
             self.assertEqual(client.post("/", {"question": "How do I stay hydrated?"}).status_code, 403)
         answer.assert_not_called()
+
+
+class WebIngestionIntegrationTests(TestCase):
+    @patch("knowledge_base.services.ingestion.embed_text", return_value=VECTOR)
+    @patch("knowledge_base.services.web_ingestion.fetch_webpage")
+    def test_scraped_content_is_searchable_skipped_updated_and_retained_on_failure(self, fetch, embed):
+        from knowledge_base.services.web_ingestion import ingest_url
+
+        url = "https://medlineplus.gov/dehydration.html"
+        page = SimpleNamespace(pages=[(1, "Dehydration can cause dry mouth and dizziness.")],
+                               title="Hydration webpage", publisher="medlineplus.gov", page_count=1, sparse_pages=[])
+        fetch.return_value = page
+        outcome, document, _ = ingest_url(url)
+        self.assertEqual(outcome, "processed")
+        self.assertEqual(document.source_url, url)
+        self.assertTrue(document.relative_path.startswith("web/"))
+        self.assertEqual(ingest_url(url + "#summary")[0], "skipped")
+        self.assertEqual(Document.objects.count(), 1)
+        with patch("knowledge_base.services.retrieval.embed_text", return_value=VECTOR):
+            result = retrieve_passages("What is dehydration?")
+        self.assertEqual(result["results"][0]["source_url"], url)
+        page.pages = [(1, "New hydration content.")]
+        self.assertEqual(ingest_url(url)[0], "processed")
+        old_chunk_id = document.chunks.get().pk
+        page.pages = [(1, "Another update.")]
+        embed.side_effect = RuntimeError("provider failed")
+        with self.assertRaises(RuntimeError):
+            ingest_url(url)
+        document.refresh_from_db()
+        self.assertEqual(document.status, Document.Status.COMPLETED)
+        self.assertEqual(document.chunks.get().pk, old_chunk_id)
+        self.assertIn("provider failed", document.error_message)
+        # A PDF reload must never prune sources that came from webpage scraping.
+        with patch("knowledge_base.management.commands.reload_knowledge_base.discover_pdfs", return_value=[]), patch(
+            "knowledge_base.management.commands.reload_knowledge_base.call_command"
+        ), patch("builtins.input", side_effect=AssertionError("must not prompt to remove web sources")):
+            call_command("reload_knowledge_base", stdout=StringIO())
+        self.assertTrue(Document.objects.filter(pk=document.pk).exists())
+
+    def test_developer_tools_enforces_csrf_for_staff(self):
+        client = Client(enforce_csrf_checks=True)
+        user = get_user_model().objects.create_user(username="staff", password="a-long-test-password", is_staff=True)
+        client.force_login(user)
+        self.assertEqual(client.post("/developer/", {"action": "web", "url": "https://medlineplus.gov/x"}).status_code, 403)
+        self.assertContains(client.get("/developer/"), "Developer tools")
+        with patch("knowledge_base.views.ingest_url") as ingest:
+            ingest.return_value = ("processed", SimpleNamespace(title="Fixture webpage", chunk_count=1), [])
+            response = client.post("/developer/", {"action": "web", "url": "https://medlineplus.gov/x"},
+                                   HTTP_X_CSRFTOKEN=client.cookies[settings.CSRF_COOKIE_NAME].value)
+        self.assertContains(response, "Processed: Fixture webpage")

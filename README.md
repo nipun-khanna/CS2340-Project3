@@ -1,6 +1,6 @@
 # Health document retrieval prototype
 
-This Django project ingests the 12 curated PDFs in `data/`, retrieves the passages that best match a question, and writes a short plain-language answer from those passages with numbered sources. It does not diagnose conditions or store private patient records. Use it for public health information only.
+This Django project ingests the 12 curated PDFs in `data/` and curated public health webpages, retrieves the passages that best match a question, and writes a short plain-language answer from those passages with numbered sources. It does not diagnose conditions or store private patient records. Use it for public health information only.
 
 ## Architecture
 
@@ -59,6 +59,38 @@ Ingestion discovers PDFs recursively inside `data/`, runs sequentially, skips un
 
 Use Django Admin at `/admin/` to correct titles and edit publisher or verified source URL metadata. Unknown source URLs stay blank. Original PDFs remain in `data/`.
 
+### Two ingestion methods (US-06)
+
+Staff users can open **Developer tools** from the ask page, or visit `/developer/`. The PDF form reads one of the curated files in `data/`. The webpage form scrapes a public HTML article from an exact host in `INGEST_ALLOWED_HOSTS` (configured in `config/settings.py`). For example:
+
+```powershell
+python manage.py ingest_webpage "https://medlineplus.gov/dehydration.html"
+python manage.py ingest_webpage "https://medlineplus.gov/dehydration.html" --force
+```
+
+These are distinct input methods: local PDF text extraction and remote HTML scraping. Both use the existing cleaning, chunking, embedding, and transactional storage pipeline. Web content is fetched again on each ingestion; unchanged extracted text is skipped unless forced. Web records keep their source URL and use a `web/` identity based on that URL. Citations label them as web articles rather than inventing PDF page numbers. Internally, their chunks use section/page 1 to fit the existing storage model.
+
+The scraper requires HTTPS, checks redirect destinations against the same host list, uses a 15-second network timeout, and reads at most 2 MiB. It removes scripts, navigation, and other boilerplate, preferring a main/article element. JavaScript rendering, OCR, PDF downloads through the scraper, and unrestricted web crawling are unsupported. Source websites can still change their layouts or block requests. Add hosts only after reviewing their provenance and relevance to the curated dataset.
+
+`reload_knowledge_base` still refreshes local PDFs and removes missing PDF records; it now preserves scraped webpage records. Refresh a webpage separately with `ingest_webpage URL --force`. `clear_knowledge_base` clears both source types. Staff forms retain session authentication and CSRF protection; ordinary end users cannot run ingestion or evaluations.
+
+### Known-answer evaluation (US-09)
+
+`evaluate_retrieval` checks source ranking only. The new evaluator calls the complete answer service and compares its output with six known questions in `evaluation_answers.json`: four source-grounded health questions and two unrelated questions that should be declined. Each answerable case includes a reference answer, source PDF and page numbers, expected source title, and groups of acceptable phrases for required concepts.
+
+```powershell
+python manage.py evaluate_answers --output evaluation-results.json
+python manage.py evaluate_answers --cases evaluation_answers.json --output evaluation-results.json
+```
+
+Run this after ingesting the reference PDFs, with a working database and `GEMINI_API_KEY`. Each case can consume an embedding and a chat request. The staff page can run one known question at a time and show the reference, generated answer, checks, and cited passages on the website.
+
+Answerable cases check expected concepts, the expected cited source, and an inline citation. Unrelated cases must return the not-found response with no sources. Output is `PASS`, `REVIEW`, or `ERROR`; errors do not count as successful refusals. The command continues through all cases, saves full answers/sources/checks/timings with model and threshold metadata, and exits nonzero if any case is not PASS. The report is local and ignored by Git.
+
+Phrase checks are regression smoke tests, not a semantic or clinical accuracy score. They can miss contradictions or unsupported additions, and valid paraphrases can require review. Compare full generated answers with the cited source and reference answer before accepting results. Source titles must match the curated baseline; update reviewed cases if document titles are intentionally changed. Do not infer live model accuracy from the mocked regression suite.
+
+See [the sprint video guide](docs/demo-video.md) for a hosted-site walkthrough, speaking script, and team recording requirements.
+
 ### Ask page
 
 Run `python manage.py runserver` and open `http://127.0.0.1:8000/`. Any signed-in user can ask a question in everyday language; there is no public sign-up, so create accounts with `createsuperuser` or in Django Admin under Users. The page shows the answer with numbered markers like [1], then a Sources list giving each cited document's title (linked when a verified source URL is set in Admin), publisher, page numbers, and the exact passage. If no passage clears the similarity threshold, or the model says the passages do not answer the question, or it cites nothing valid, the page says no answer was found instead of showing an unsupported answer. Questions are limited to 1,000 characters. Each question costs one embedding call and one chat call.
@@ -91,4 +123,4 @@ The first test command uses in-memory PDFs and mocked embedding responses, so it
 - **Unusable PDF:** The extractor requires selectable text. Review reported sparse pages and source layouts. Multi-column ordering is heuristic and may require manual inspection; no OCR is provided.
 - **Weak or misleading matches:** Review retrieved passages and tune the threshold against `evaluation_questions.json`. Similarity alone does not establish medical support.
 
-There is no public sign-up, conversation history, upload UI, OCR, or private patient data handling. This is a small developer prototype, not a clinical decision system.
+There is no public sign-up, conversation history, arbitrary file upload UI, OCR, or private patient data handling. This is a small developer prototype, not a clinical decision system.

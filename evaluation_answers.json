@@ -1,0 +1,52 @@
+[
+  {
+    "id": "dehydration-symptoms",
+    "question": "What are common symptoms of dehydration in adults?",
+    "expected_answer": "Adults may feel very thirsty, have a dry mouth, and feel dizzy.",
+    "expected_title": "Dehydration: MedlinePlus",
+    "reference_file": "data/Dehydration_ MedlinePlus.pdf",
+    "reference_pages": [2],
+    "required_concepts": [["thirst", "thirsty"], ["dry mouth"], ["dizziness", "dizzy"]]
+  },
+  {
+    "id": "falls-home-safety",
+    "question": "According to the CDC fall prevention brochure, how can I make my home safer?",
+    "expected_answer": "Remove things you can trip over, install grab bars near the tub and toilet, and improve lighting to reduce fall risks.",
+    "expected_title": "What You Can Do To Prevent Falls",
+    "reference_file": "data/STEADI-Brochure-WhatYouCanDo-508.pdf",
+    "reference_pages": [2],
+    "required_concepts": [["trip", "tripping", "clutter", "hazards"], ["grab bars", "grab bar"], ["lighting", "lights", "light"]]
+  },
+  {
+    "id": "postural-definition",
+    "question": "What happens to blood pressure when someone with postural hypotension goes from sitting to standing?",
+    "expected_answer": "Blood pressure drops when changing from sitting to standing.",
+    "expected_title": "Postural Hypotension What it is & How to Manage it",
+    "reference_file": "data/STEADI-Brochure-Postural-Hypotension-508.pdf",
+    "reference_pages": [1],
+    "required_concepts": [["blood pressure"], ["drops", "drop", "falls", "decreases"], ["standing", "stand"]]
+  },
+  {
+    "id": "postural-changing-position",
+    "question": "According to the CDC postural hypotension brochure, how should I get out of bed and change position?",
+    "expected_answer": "Get out of bed slowly: sit up, sit on the side of the bed, then stand. Take your time changing position.",
+    "expected_title": "Postural Hypotension What it is & How to Manage it",
+    "reference_file": "data/STEADI-Brochure-Postural-Hypotension-508.pdf",
+    "reference_pages": [2],
+    "required_concepts": [["slowly", "take your time", "gradually"], ["sit", "sitting"], ["stand", "standing"]]
+  },
+  {
+    "id": "unrelated-car",
+    "question": "How do I replace the transmission in my car?",
+    "expected_answer": "The chatbot should say it cannot find an answer in the health documents, with no sources.",
+    "expected_title": null,
+    "required_concepts": []
+  },
+  {
+    "id": "unrelated-weather",
+    "question": "What is the weather forecast for tomorrow in Atlanta?",
+    "expected_answer": "The chatbot should say it cannot find an answer in the health documents, with no sources.",
+    "expected_title": null,
+    "required_concepts": []
+  }
+]

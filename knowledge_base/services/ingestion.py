@@ -24,32 +24,39 @@ def ingest_file(path: Path, *, force: bool = False) -> tuple[str, Document, list
         raise ValueError("File must be an existing PDF inside data/")
     relative = path.relative_to(data_dir).as_posix()
     checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+    return _ingest_document(relative, path.name, checksum, lambda: extract_pdf(path), force=force)
+
+
+def _ingest_document(relative, filename, checksum, extract, *, force=False, source_url=None):
+    """Prepare all chunks before replacing a searchable version, for either ingestion method."""
     previous = Document.objects.filter(relative_path=relative).first()
     if not force and previous and previous.status == Document.Status.COMPLETED and previous.checksum == checksum:
         return "skipped", previous, []
     if previous is None:
-        Document.objects.create(relative_path=relative, filename=path.name, title=path.stem,
+        Document.objects.create(relative_path=relative, filename=filename, title=Path(filename).stem,
                                 status=Document.Status.PROCESSING)
     elif previous.status != Document.Status.COMPLETED:
         Document.objects.filter(pk=previous.pk).update(status=Document.Status.PROCESSING, error_message="")
 
     try:
-        extracted = extract_pdf(path)
+        extracted = extract()
         chunks = chunk_pages(extracted.pages, settings.RAG_CHUNK_TOKENS, settings.RAG_CHUNK_OVERLAP)
         if not chunks:
-            raise ValueError("PDF has no usable text after cleaning")
+            raise ValueError("Document has no usable text after cleaning")
         vectors = [embed_text(chunk.text, "RETRIEVAL_DOCUMENT") for chunk in chunks]
         with transaction.atomic():
             document, _ = Document.objects.select_for_update().get_or_create(
                 relative_path=relative,
-                defaults={"filename": path.name, "title": path.stem, "status": Document.Status.PROCESSING},
+                defaults={"filename": filename, "title": Path(filename).stem, "status": Document.Status.PROCESSING},
             )
             document.chunks.all().delete()
-            document.filename = path.name
+            document.filename = filename
             # Preserve curated admin edits on subsequent ingestion.
             if not document.last_ingested_at:
-                document.title = extracted.title or path.stem
+                document.title = extracted.title or Path(filename).stem
                 document.publisher = extracted.publisher
+            if source_url is not None:
+                document.source_url = source_url
             document.checksum = checksum
             document.page_count = extracted.page_count
             document.chunk_count = len(chunks)
@@ -70,7 +77,7 @@ def ingest_file(path: Path, *, force: bool = False) -> tuple[str, Document, list
         else:
             Document.objects.update_or_create(
                 relative_path=relative,
-                defaults={"filename": path.name, "title": path.stem, "status": Document.Status.FAILED,
+                defaults={"filename": filename, "title": Path(filename).stem, "status": Document.Status.FAILED,
                           "error_message": str(exc)[:1000]},
             )
         raise
