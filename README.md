@@ -1,6 +1,6 @@
 # Health document retrieval prototype
 
-This Django project ingests the 12 curated PDFs in `data/`, retrieves the passages that best match a question, and writes a short plain-language answer from those passages with numbered sources. It does not diagnose conditions or store private patient records. Use it for public health information only.
+This Django project ingests the 12 curated PDFs in `data/` and curated public health webpages, retrieves the passages that best match a question, and writes a short plain-language answer from those passages with numbered sources. It does not diagnose conditions or store private patient records. Use it for public health information only.
 
 ## Architecture
 
@@ -58,6 +58,21 @@ Ingestion discovers PDFs recursively inside `data/`, runs sequentially, skips un
 `ingest_documents --force` re-extracts and re-embeds every PDF even if it has not changed; use it after changing the embedding model, dimensions, or chunk settings. `reload_knowledge_base` makes the database match `data/`: it lists and removes documents whose PDF is gone (asking for confirmation unless `--yes` is given), then force-ingests every PDF. Each document stays searchable on its previous version until its new version is fully embedded, so a provider failure partway through does not empty the knowledge base. `clear_knowledge_base` removes every document and chunk after confirmation (`--yes` skips the prompt); the PDFs in `data/` are never touched. Clearing leaves nothing searchable until you ingest again.
 
 Use Django Admin at `/admin/` to correct titles and edit publisher or verified source URL metadata. Unknown source URLs stay blank. Original PDFs remain in `data/`.
+
+### Two ingestion methods (US-06)
+
+Staff users can open **Developer tools** from the ask page, or visit `/developer/`. The PDF form reads one of the curated files in `data/`. The webpage form scrapes a public HTML article from an exact host in `INGEST_ALLOWED_HOSTS` (configured in `config/settings.py`). For example:
+
+```powershell
+python manage.py ingest_webpage "https://medlineplus.gov/dehydration.html"
+python manage.py ingest_webpage "https://medlineplus.gov/dehydration.html" --force
+```
+
+These are distinct input methods: local PDF text extraction and remote HTML scraping. Both use the existing cleaning, chunking, embedding, and transactional storage pipeline. Web content is fetched again on each ingestion; unchanged extracted text is skipped unless forced. Web records keep their source URL and use a `web/` identity based on that URL. Citations label them as web articles rather than inventing PDF page numbers. Internally, their chunks use section/page 1 to fit the existing storage model.
+
+The scraper requires HTTPS, checks redirect destinations against the same host list, uses a 15-second network timeout, and reads at most 2 MiB. It removes scripts, navigation, and other boilerplate, preferring a main/article element. JavaScript rendering, OCR, PDF downloads through the scraper, and unrestricted web crawling are unsupported. Source websites can still change their layouts or block requests. Add hosts only after reviewing their provenance and relevance to the curated dataset.
+
+`reload_knowledge_base` still refreshes local PDFs and removes missing PDF records; it now preserves scraped webpage records. Refresh a webpage separately with `ingest_webpage URL --force`. `clear_knowledge_base` clears both source types. Staff forms retain session authentication and CSRF protection; ordinary end users cannot run ingestion or evaluations.
 
 ### Known-answer evaluation (US-09)
 

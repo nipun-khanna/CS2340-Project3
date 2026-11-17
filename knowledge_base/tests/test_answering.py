@@ -82,6 +82,12 @@ class AnswerQuestionTests(SimpleTestCase):
         self.assertEqual(kwargs["config"].response_mime_type, "application/json")
         self.assertIn("ONLY the numbered passages", kwargs["config"].system_instruction)
 
+    def test_web_sources_use_article_labels_in_the_prompt(self, retrieve):
+        retrieve.return_value = retrieved(passage(1, source_kind="web"))
+        client = client_returning(ModelAnswer(answerable=True, answer="Yes [1].", cited_passages=[1]))
+        answer_question("q", client=client)
+        self.assertIn("Doc 1, web article", client.models.generate_content.call_args.kwargs["contents"])
+
     def test_falls_back_to_parsing_response_text(self, retrieve):
         retrieve.return_value = retrieved(passage(1))
         text = json.dumps({"answerable": True, "answer": "Yes [1].", "cited_passages": [1]})

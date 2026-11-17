@@ -3,7 +3,8 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from urllib.request import Request
 
 from django.contrib.auth.models import AnonymousUser
 from django.core.management import call_command
@@ -12,7 +13,50 @@ from django.test import RequestFactory, SimpleTestCase
 
 from knowledge_base.services.answering import NOT_FOUND
 from knowledge_base.services.evaluation import evaluate_case, load_cases
+from knowledge_base.services.web_ingestion import MAX_PAGE_BYTES, TrustedRedirects, fetch_webpage, validate_source_url
 from knowledge_base.views import developer_tools
+
+
+class WebScrapingTests(SimpleTestCase):
+    def test_rejects_untrusted_urls_and_redirects(self):
+        for url in ["http://medlineplus.gov/x", "https://localhost/x", "https://127.0.0.1/x",
+                    "file:///etc/passwd", "https://medlineplus.gov.evil.example/x",
+                    "https://user:pass@medlineplus.gov/x", "https://medlineplus.gov:8443/x"]:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                validate_source_url(url)
+        with self.assertRaises(ValueError):
+            TrustedRedirects().redirect_request(Request("https://medlineplus.gov/x"), None,
+                                                302, "Found", {}, "http://127.0.0.1/private")
+        self.assertEqual(validate_source_url("https://medlineplus.gov/x#summary"), "https://medlineplus.gov/x")
+
+    @patch("knowledge_base.services.web_ingestion.build_opener")
+    def test_extracts_article_and_discards_navigation_and_scripts(self, opener):
+        response = opener.return_value.open.return_value.__enter__.return_value
+        response.geturl.return_value = "https://medlineplus.gov/x"
+        response.headers.get_content_type.return_value = "text/html"
+        response.read.return_value = b'<html><title>Hydration guide</title><body><nav>Navigation</nav><main><script>bad()</script><p>Drink water regularly. Dry mouth and dizziness can be symptoms of dehydration in adults.</p></main><footer>Footer</footer></body></html>'
+        page = fetch_webpage("https://medlineplus.gov/x")
+        self.assertEqual(page.title, "Hydration guide")
+        self.assertIn("Dry mouth", page.pages[0][1])
+        for excluded in ("Navigation", "bad()", "Footer"):
+            self.assertNotIn(excluded, page.pages[0][1])
+        self.assertEqual(opener.return_value.open.call_args.kwargs["timeout"], 15)
+        response.read.assert_called_once_with(MAX_PAGE_BYTES + 1)
+
+    @patch("knowledge_base.services.web_ingestion.build_opener")
+    def test_rejects_non_html_oversized_and_empty_pages(self, opener):
+        response = opener.return_value.open.return_value.__enter__.return_value
+        response.geturl.return_value = "https://medlineplus.gov/x"
+        response.headers.get_content_type.return_value = "application/pdf"
+        with self.assertRaisesRegex(ValueError, "HTML"):
+            fetch_webpage("https://medlineplus.gov/x")
+        response.headers.get_content_type.return_value = "text/html"
+        response.read.return_value = b"x" * (MAX_PAGE_BYTES + 1)
+        with self.assertRaisesRegex(ValueError, "2 MiB"):
+            fetch_webpage("https://medlineplus.gov/x")
+        response.read.return_value = b"<html><body>Empty</body></html>"
+        with self.assertRaisesRegex(ValueError, "too little"):
+            fetch_webpage("https://medlineplus.gov/x")
 
 
 class EvaluationTests(SimpleTestCase):
@@ -89,13 +133,19 @@ class DeveloperViewTests(SimpleTestCase):
         self.assertEqual(self.request(user=AnonymousUser()).status_code, 302)
         self.assertEqual(self.request(user=SimpleNamespace(is_authenticated=True, is_staff=False)).status_code, 403)
 
-    def test_renders_tools_and_validates_action(self):
+    @patch("knowledge_base.models.Document.objects.order_by", return_value=[])
+    def test_renders_tools_and_validates_action(self, documents):
         response = self.request()
+        self.assertContains(response, "Ingest a PDF")
+        self.assertContains(response, "Ingest a webpage")
         self.assertContains(response, "Test a known question")
+        self.assertContains(self.request({"action": "pdf", "pdf": "../../outside.pdf"}), "Choose a PDF", status_code=400)
+        self.assertContains(self.request({"action": "web", "url": "http://localhost"}), "HTTPS URL", status_code=400)
         self.assertEqual(self.request({"action": "unsupported"}).status_code, 400)
 
+    @patch("knowledge_base.models.Document.objects.order_by", return_value=[])
     @patch("knowledge_base.views.evaluate_case")
-    def test_evaluates_only_a_known_case_and_escapes_answer(self, evaluate):
+    def test_evaluates_only_a_known_case_and_escapes_answer(self, evaluate, documents):
         evaluate.return_value = {"status": "REVIEW", "question": "q", "expected_answer": "reference",
                                  "answer": "<script>bad()</script>", "checks": {}, "elapsed_seconds": 0}
         self.assertContains(self.request({"action": "evaluate", "case_id": load_cases()[0]["id"]}), "&lt;script&gt;")
