@@ -32,6 +32,7 @@ def retrieve_passages(question: str, top_k: int = 5) -> dict:
         document = chunk.document
         result["results"].append({
             "document_id": document.pk, "title": document.title,
+            "source_kind": "web" if document.relative_path.startswith("web/") else "pdf",
             "publisher": document.publisher or None, "source_url": document.source_url or None,
             "page_start": chunk.page_start, "page_end": chunk.page_end,
             "chunk_id": chunk.pk, "text": chunk.text,

@@ -96,6 +96,8 @@ def _generate(question: str, passages: list[dict], client) -> ModelAnswer:
 
 
 def _pages(passage: dict) -> str:
+    if passage.get("source_kind") == "web":
+        return "web article"
     if passage["page_start"] == passage["page_end"]:
         return f"page {passage['page_start']}"
     return f"pages {passage['page_start']}-{passage['page_end']}"
