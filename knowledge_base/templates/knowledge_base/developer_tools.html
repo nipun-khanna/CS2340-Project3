@@ -1,0 +1,30 @@
+{% extends "knowledge_base/base.html" %}
+{% block title %}Developer tools · Health Questions{% endblock %}
+{% block content %}
+<header><h1>Developer tools</h1><a href="{% url 'ask' %}">Back to questions</a></header>
+<p>Compare chatbot answers with known questions. These tools are available to staff only.</p>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if message %}<p class="answer" role="status">{{ message }}</p>{% endif %}
+<h2>Test a known question</h2>
+<p class="meta">Runs the real chatbot and checks expected facts, cited sources, and unrelated-question handling. A PASS is an automated smoke check; review the answer for accuracy, including negation and unsupported claims.</p>
+<form method="post">
+  {% csrf_token %}<input type="hidden" name="action" value="evaluate">
+  <label for="case_id">Known question</label>
+  <select id="case_id" name="case_id" required>{% for case in cases %}<option value="{{ case.id }}">{{ case.question }}</option>{% endfor %}</select>
+  <button type="submit">Test answer</button>
+</form>
+{% if evaluation %}
+<section aria-live="polite">
+  <h2>{{ evaluation.status }}: {{ evaluation.question }}</h2>
+  <p><strong>Reference answer:</strong> {{ evaluation.expected_answer }}</p>
+  {% if evaluation.expected_title %}<p><strong>Expected source:</strong> {{ evaluation.expected_title }}</p>{% endif %}
+  {% if evaluation.error %}<p class="error">{{ evaluation.error }}</p>{% else %}
+    <p><strong>Generated answer:</strong></p><div class="answer">{{ evaluation.answer|linebreaksbr }}</div>
+    <ul>{% for name, passed in evaluation.checks.items %}<li>{{ name }}: {% if passed %}PASS{% else %}REVIEW{% endif %}</li>{% endfor %}</ul>
+    {% if evaluation.missing_concepts %}<p>Missing expected concepts: {{ evaluation.missing_concepts }}</p>{% endif %}
+    {% for source in evaluation.sources %}<details><summary>[{{ source.number }}] {{ source.title }}</summary><blockquote>{{ source.text }}</blockquote></details>{% endfor %}
+  {% endif %}
+  <p class="meta">Time: {{ evaluation.elapsed_seconds }} seconds</p>
+</section>
+{% endif %}
+{% endblock %}

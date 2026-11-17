@@ -59,6 +59,23 @@ Ingestion discovers PDFs recursively inside `data/`, runs sequentially, skips un
 
 Use Django Admin at `/admin/` to correct titles and edit publisher or verified source URL metadata. Unknown source URLs stay blank. Original PDFs remain in `data/`.
 
+### Known-answer evaluation (US-09)
+
+`evaluate_retrieval` checks source ranking only. The new evaluator calls the complete answer service and compares its output with six known questions in `evaluation_answers.json`: four source-grounded health questions and two unrelated questions that should be declined. Each answerable case includes a reference answer, source PDF and page numbers, expected source title, and groups of acceptable phrases for required concepts.
+
+```powershell
+python manage.py evaluate_answers --output evaluation-results.json
+python manage.py evaluate_answers --cases evaluation_answers.json --output evaluation-results.json
+```
+
+Run this after ingesting the reference PDFs, with a working database and `GEMINI_API_KEY`. Each case can consume an embedding and a chat request. The staff page can run one known question at a time and show the reference, generated answer, checks, and cited passages on the website.
+
+Answerable cases check expected concepts, the expected cited source, and an inline citation. Unrelated cases must return the not-found response with no sources. Output is `PASS`, `REVIEW`, or `ERROR`; errors do not count as successful refusals. The command continues through all cases, saves full answers/sources/checks/timings with model and threshold metadata, and exits nonzero if any case is not PASS. The report is local and ignored by Git.
+
+Phrase checks are regression smoke tests, not a semantic or clinical accuracy score. They can miss contradictions or unsupported additions, and valid paraphrases can require review. Compare full generated answers with the cited source and reference answer before accepting results. Source titles must match the curated baseline; update reviewed cases if document titles are intentionally changed. Do not infer live model accuracy from the mocked regression suite.
+
+See [the sprint video guide](docs/demo-video.md) for a hosted-site walkthrough, speaking script, and team recording requirements.
+
 ### Ask page
 
 Run `python manage.py runserver` and open `http://127.0.0.1:8000/`. Any signed-in user can ask a question in everyday language; there is no public sign-up, so create accounts with `createsuperuser` or in Django Admin under Users. The page shows the answer with numbered markers like [1], then a Sources list giving each cited document's title (linked when a verified source URL is set in Admin), publisher, page numbers, and the exact passage. If no passage clears the similarity threshold, or the model says the passages do not answer the question, or it cites nothing valid, the page says no answer was found instead of showing an unsupported answer. Questions are limited to 1,000 characters. Each question costs one embedding call and one chat call.
@@ -91,4 +108,4 @@ The first test command uses in-memory PDFs and mocked embedding responses, so it
 - **Unusable PDF:** The extractor requires selectable text. Review reported sparse pages and source layouts. Multi-column ordering is heuristic and may require manual inspection; no OCR is provided.
 - **Weak or misleading matches:** Review retrieved passages and tune the threshold against `evaluation_questions.json`. Similarity alone does not establish medical support.
 
-There is no public sign-up, conversation history, upload UI, OCR, or private patient data handling. This is a small developer prototype, not a clinical decision system.
+There is no public sign-up, conversation history, arbitrary file upload UI, OCR, or private patient data handling. This is a small developer prototype, not a clinical decision system.

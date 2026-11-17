@@ -10,6 +10,8 @@
   </form>
 </header>
 
+{% if user.is_staff %}<p><a href="{% url 'developer_tools' %}">Developer tools</a></p>{% endif %}
+
 <p class="notice">This gives general health information from trusted public sources. It is not medical advice. <strong>In an emergency, call 911.</strong></p>
 
 <form method="post">
@@ -39,7 +41,7 @@
             </strong>
             <div class="meta">
               {% if source.publisher %}{{ source.publisher }} · {% endif %}
-              {% if source.page_start == source.page_end %}Page {{ source.page_start }}{% else %}Pages {{ source.page_start }}–{{ source.page_end }}{% endif %}
+              {% if source.source_kind == "web" %}Web article{% elif source.page_start == source.page_end %}Page {{ source.page_start }}{% else %}Pages {{ source.page_start }}–{{ source.page_end }}{% endif %}
             </div>
             <details>
               <summary>Show the passage this came from</summary>

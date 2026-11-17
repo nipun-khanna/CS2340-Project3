@@ -220,3 +220,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local browser checks and generated evaluation reports
+/.playwright-mcp/
+/evaluation-results*.json
