@@ -74,6 +74,18 @@ The scraper requires HTTPS, checks redirect destinations against the same host l
 
 `reload_knowledge_base` still refreshes local PDFs and removes missing PDF records; it now preserves scraped webpage records. Refresh a webpage separately with `ingest_webpage URL --force`. `clear_knowledge_base` clears both source types. Staff forms retain session authentication and CSRF protection; ordinary end users cannot run ingestion or evaluations.
 
+### Clear or reload on the website (US-11)
+
+The **Knowledge base** section of `/developer/` has **Reload knowledge base** and **Clear knowledge base** buttons. Both require ticking a confirmation box and run the same `reload_knowledge_base --yes` and `clear_knowledge_base --yes` commands described above. Reloading all 12 PDFs takes about 40 seconds.
+
+### Performance monitoring and usage logs (US-10, US-12)
+
+Every question asked on the ask page records its timestamp, question length, success, and response time (question text is not stored, since it may contain private health details). Staff can open **View system performance** from `/developer/`, or visit `/developer/monitoring/`, to see for the last hour, 24 hours, or 7 days: request count, failures and failure rate, average, median, 95th-percentile, and slowest response time, requests slower than the target, an `OK`/`ATTENTION` status, recent failures, and the recent usage log. Targets are `RESPONSE_TIME_TARGET_SECONDS` (default 10; the 95th percentile must not exceed it) and `MAX_FAILURE_RATE` (default 0.05). The full log is also in Django Admin under Usage logs.
+
+### Prompts by question intent (US-08)
+
+`knowledge_base/services/prompts.py` classifies each question at runtime as `factual`, `explanation`, `procedural`, or `creative` and builds the system prompt from shared grounding and safety rules plus that intent's style rules, word limit, and temperature. For example, "What is postural hypotension?" gets a short direct answer, "Why do older adults get dehydrated?" a cause-and-effect explanation, "How do I stay hydrated?" a numbered list of steps, and "Write a short poem about staying hydrated" a cited poem. Creative requests search on their topic ("staying hydrated") so the format wording does not hurt retrieval. Every intent keeps the same citation and no-outside-knowledge rules.
+
 ### Known-answer evaluation (US-09)
 
 `evaluate_retrieval` checks source ranking only. The new evaluator calls the complete answer service and compares its output with six known questions in `evaluation_answers.json`: four source-grounded health questions and two unrelated questions that should be declined. Each answerable case includes a reference answer, source PDF and page numbers, expected source title, and groups of acceptable phrases for required concepts.
@@ -93,7 +105,7 @@ See [the sprint video guide](docs/demo-video.md) for a hosted-site walkthrough, 
 
 ### Ask page
 
-Run `python manage.py runserver` and open `http://127.0.0.1:8000/`. Any signed-in user can ask a question in everyday language; there is no public sign-up, so create accounts with `createsuperuser` or in Django Admin under Users. The page shows the answer with numbered markers like [1], then a Sources list giving each cited document's title (linked when a verified source URL is set in Admin), publisher, page numbers, and the exact passage. If no passage clears the similarity threshold, or the model says the passages do not answer the question, or it cites nothing valid, the page says no answer was found instead of showing an unsupported answer. Questions are limited to 1,000 characters. Each question costs one embedding call and one chat call.
+Run `python manage.py runserver` and open `http://127.0.0.1:8000/`. Anyone can ask a question in everyday language without signing in. Staff tools still require a staff login; there is no public sign-up, so create staff accounts with `createsuperuser` or in Django Admin under Users. The page shows the answer with numbered markers like [1], then a Sources list giving each cited document's title (linked when a verified source URL is set in Admin), publisher, page numbers, and the exact passage. If no passage clears the similarity threshold, or the model says the passages do not answer the question, or it cites nothing valid, the page says no answer was found instead of showing an unsupported answer. Questions are limited to 1,000 characters. Each question costs one embedding call and one chat call.
 
 ### HTTP API
 
@@ -114,6 +126,19 @@ python manage.py test knowledge_base.integration_tests
 ```
 
 The first test command uses in-memory PDFs and mocked embedding responses, so it does not need API or database credentials. The integration suite needs a PostgreSQL `DATABASE_URL` that allows Django to create and drop a test database with pgvector; it mocks Gemini and does not consume embedding quota. It is separate so local tests can pass without PostgreSQL. Run `evaluate_retrieval` only after ingestion, since it performs real query embeddings. Its 14 source expectations were derived from the checked-in PDFs; inspect any `REVIEW` output rather than treating it as a fabricated answer. The two unrelated questions are expected to return no passage, but this depends on threshold calibration.
+
+## Deploying to Vercel
+
+The repository is ready for Vercel: `api/index.py` exposes the Django WSGI app, `vercel.json` routes every path to it (60-second limit, enough for a knowledge base reload) and bundles `data/` and `evaluation_answers.json`, and WhiteNoise serves admin and app static files without a build step.
+
+1. In Vercel, choose **Add New → Project**, import this GitHub repository, and keep the framework preset as **Other** with no build command.
+2. Under **Settings → Environment Variables**, add:
+   - `DJANGO_SECRET_KEY`: a new long random value (required; the app refuses to start on Vercel without it).
+   - `DJANGO_DEBUG`: `False`.
+   - `DATABASE_URL`: the Supabase **transaction pooler** URI (port `6543`), with `?sslmode=require`. Serverless functions open many short connections, which the session pooler on port 5432 can run out of.
+   - `GEMINI_API_KEY`, and optionally `RAG_MIN_SIMILARITY`, `GEMINI_CHAT_MODEL`, `RESPONSE_TIME_TARGET_SECONDS`, `MAX_FAILURE_RATE`.
+   - For a custom domain, also `DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS` (with `https://`). `*.vercel.app` addresses are allowed automatically.
+3. Deploy. Migrations and ingestion are not run by Vercel: run `python manage.py migrate` and ingest documents locally against the same `DATABASE_URL` (or use the Developer tools page after creating a staff user).
 
 ## Troubleshooting and limits
 
